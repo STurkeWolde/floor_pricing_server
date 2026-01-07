@@ -2,6 +2,11 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
+# Ensure the project root is on PYTHONPATH so `import app` works
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 # Import your Base and models
 from app.backend.database import Base
 from app.backend import models
