@@ -1,0 +1,3 @@
+Vendor Name,SKU,Style,Color,Product Type,Pricing Unit,Base Price,Discount %,Effective Date,Expiration Date,Stock Quantity
+Acme Floors,SKU100,Maple,Golden,FLOORING,SF,4.00,5,2025-01-01,2025-12-31,1000
+Acme Floors,SKU101,Birch,White,FLOORING,SF,3.80,0,2025-01-01,2025-12-31,500

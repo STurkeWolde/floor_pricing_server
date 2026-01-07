@@ -1,0 +1,13 @@
+node_modules
+frontend/node_modules
+backend/.venv
+*.pyc
+__pycache__
+build
+dist
+.env
+.git
+.DS_Store
+flooring.db
+alembic/versions
+alembic.ini

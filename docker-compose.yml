@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./app/backend
+      dockerfile: backend.Dockerfile
+    container_name: floor_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://floor:secret@db:5432/pricing
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: frontend.Dockerfile
+    container_name: floor_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:16
+    container_name: floor_db
+    restart: always
+    environment:
+      POSTGRES_USER: floor
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: pricing
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
