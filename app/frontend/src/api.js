@@ -37,3 +37,15 @@ export async function deleteVendor(id) {
   const res = await fetch(`${API_URL}/vendors/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete vendor");
 }
+
+export async function deleteAllProducts() {
+  const res = await fetch("http://127.0.0.1:8000/products/clear-all", {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Delete all failed:", text);
+    throw new Error("Delete all failed");
+  }
+}
