@@ -122,6 +122,7 @@ async def import_b2b_csv(file: UploadFile, db: Session = Depends(get_db)):
         vendor_name = (
             get_any(row, ["vendor name", "manufacturer"])
             or row.get("DEALER")
+            or row.get("SUPPLIER")
             or "Unknown Vendor"
         )
 
