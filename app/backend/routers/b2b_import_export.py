@@ -3,6 +3,7 @@ import csv
 import io
 import logging
 from typing import List
+import re
 
 from fastapi import APIRouter, UploadFile, Depends, HTTPException, Form
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -73,8 +74,13 @@ def normalize_unit(u: str) -> str:
 
 
 
+import re
+
 def normalize_key(s: str) -> str:
-    return str(s).strip().lower().replace("_", " ").replace("-", " ")
+    if not s:
+        return ""
+    s = str(s).strip().lower().lstrip("\ufeff")  # remove BOM
+    return re.sub(r"[^a-z0-9]", "", s)           # remove / spaces etc
 
 
 def get_any(row: dict, keys: list[str]):
