@@ -45,7 +45,7 @@ export async function deleteAllProducts() {
 
   if (!res.ok) {
     const text = await res.text();
-    console.error("Delete all failed:", text);
-    throw new Error("Delete all failed");
+    throw new Error(text);
   }
 }
+

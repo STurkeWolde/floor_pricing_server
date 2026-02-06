@@ -27,6 +27,12 @@ def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)
 def list_products(db: Session = Depends(get_db)):
     return db.query(models.Product).all()
 
+@router.delete("/clear-all")
+def clear_all_products(db: Session = Depends(get_db)):
+    db.query(models.Product).delete()
+    db.commit()
+    return {"message": "All products deleted successfully"}
+
 @router.delete("/{product_id}", status_code=204)
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(models.Product).filter(models.Product.id == product_id).first()
@@ -34,10 +40,3 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product)
     db.commit()
-    return {"detail": "Product deleted successfully"}
-
-@router.delete("/clear-all")
-def clear_all_products(db: Session = Depends(get_db)):
-    db.query(models.Product).delete()
-    db.commit()
-    return {"message": "All products deleted successfully"}

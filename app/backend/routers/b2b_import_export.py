@@ -36,15 +36,41 @@ def get_db():
 def normalize_unit(u: str) -> str:
     if not u:
         return "EA"
-    s = str(u).strip().lower().replace(".", "").replace(" ", "")
+
+    raw = str(u).strip().upper()
+
+    # Handle compound units like SF/CT, SY/CT
+    if "/" in raw:
+        raw = raw.split("/")[0]
+
+    s = raw.replace(".", "").replace(" ", "")
+
     synonyms = {
-        "sf": "SF", "sqft": "SF", "sft": "SF",
-        "sy": "SY", "sqyd": "SY",
-        "lf": "LF",
-        "ea": "EA", "each": "EA", "pcs": "EA", "pc": "EA",
-        "ct": "CT", "carton": "CT",
+        # square feet
+        "SF": "SF",
+        "SQFT": "SF",
+        "SFT": "SF",
+
+        # square yards
+        "SY": "SY",
+        "SQYD": "SY",
+
+        # linear feet
+        "LF": "LF",
+
+        # each
+        "EA": "EA",
+        "EACH": "EA",
+        "PC": "EA",
+        "PCS": "EA",
+
+        # cartons
+        "CT": "CT",
+        "CARTON": "CT",
     }
+
     return synonyms.get(s, "EA")
+
 
 
 def normalize_key(s: str) -> str:

@@ -204,8 +204,8 @@ function App() {
     window.URL.revokeObjectURL(url);
   }
 
-  async function handleDeleteAllProducts() {
-  if (!window.confirm("⚠️ Delete ALL products? This cannot be undone.")) return;
+ async function handleDeleteAllProducts() {
+  if (!window.confirm("⚠️ Delete ALL products?")) return;
   await deleteAllProducts();
   loadData();
   alert("✅ All products deleted");
