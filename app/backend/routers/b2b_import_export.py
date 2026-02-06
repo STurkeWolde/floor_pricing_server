@@ -144,7 +144,7 @@ async def import_b2b_csv(file: UploadFile, db: Session = Depends(get_db)):
             style=get_any(row, ["description", "style", "pattern"]) or "",
             color=get_any(row, ["color", "colour"]) or "",
             product_type=get_any(row, ["product type"]) or "",
-            pricing_unit=normalize_unit(get_any(row, ["pc", "unit", "uom"]) or ""),
+            pricing_unit=normalize_unit(get_any(row, ["pc", "unit", "uom", "bu"]) or ""),
             price=price_f,
             vendor_id=vendor.id,
         )
@@ -178,6 +178,7 @@ async def preview_convert_to_b2b(file: UploadFile, manufacturer: str = Form(None
         original_manuf = (
             get_any(r, ["manufacturer", "vendor"])
             or r.get("DEALER")
+            or r.get("SUPPLIER")
             or ""
         )
 
@@ -189,7 +190,7 @@ async def preview_convert_to_b2b(file: UploadFile, manufacturer: str = Form(None
         style = get_any(r, ["description", "style", "pattern"]) or ""
         color = get_any(r, ["color", "colour"]) or ""
         sku = get_any(r, ["sku", "ikey"]) or ""
-        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom"]) or "")
+        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom", "bu"]) or "")
         price = get_any(r, ["price", "cut cost", "base price"]) or ""
 
         product_type = resolve_product_type(r, type_map)
@@ -233,7 +234,7 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
     output_rows = []
 
     for r in reader:
-        original_manuf = get_any(r, ["manufacturer", "vendor"]) or r.get("DEALER") or ""
+        original_manuf = get_any(r, ["manufacturer", "vendor"]) or r.get("DEALER") or r.get("SUPPLIER") or ""
 
         if manufacturer:
             manuf = manufacturer.strip() if force_manufacturer else original_manuf or manufacturer.strip()
@@ -243,7 +244,7 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
         style = (get_any(r, ["description", "style", "pattern"]) or "").strip()
         color = (get_any(r, ["color", "colour"]) or "").strip()
         sku = (get_any(r, ["sku", "ikey"]) or "").strip()
-        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom"]) or "")
+        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom", "bu"]) or "")
         price = get_any(r, ["price", "cut cost", "base price"]) or ""
 
         product_type = resolve_product_type(r, type_map)
