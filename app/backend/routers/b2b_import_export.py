@@ -34,7 +34,19 @@ def get_db():
 # Helpers
 # ----------------------------
 
-def normalize_unit(u: str) -> str:
+def safe_filename(name: str | None, default: str = "converted_b2b.csv") -> str:
+    if not name:
+        return default
+
+    name = name.strip()
+    name = re.sub(r"[^\w\-\.]", "_", name)
+
+    if not name.lower().endswith(".csv"):
+        name += ".csv"
+
+    return name
+
+def normalize_unit(u: str | None) -> str:
     if not u:
         return "EA"
 
@@ -44,37 +56,46 @@ def normalize_unit(u: str) -> str:
     if "/" in raw:
         raw = raw.split("/")[0]
 
-    s = raw.replace(".", "").replace(" ", "")
+    raw = raw.replace(".", "").replace(" ", "")
 
     synonyms = {
-        # square feet
-        "SF": "SF",
         "SQFT": "SF",
         "SFT": "SF",
 
-        # square yards
-        "SY": "SY",
         "SQYD": "SY",
 
-        # linear feet
-        "LF": "LF",
-
-        # each
-        "EA": "EA",
         "EACH": "EA",
         "PC": "EA",
         "PCS": "EA",
 
-        # cartons
-        "CT": "CT",
         "CARTON": "CT",
+        "BOX": "CT",
     }
 
-    return synonyms.get(s, "EA")
+    # 🔥 CRITICAL CHANGE:
+    # If we don't recognize it, KEEP IT — do NOT force EA
+    return synonyms.get(raw, raw)
+
 
 
 
 import re
+
+def extract_weight(row: dict) -> str:
+    return (
+        get_any(row, [
+            "weight",
+            "wt",
+            "weight (lbs)",
+            "lbs",
+            "lb",
+            "shipping weight",
+            "ship wt",
+            "gross weight",
+            "net weight",
+        ]) or ""
+    )
+
 
 def normalize_key(s: str) -> str:
     if not s:
@@ -102,22 +123,34 @@ def find_header_row(lines: list[str]) -> int:
 
 
 def build_reader(contents: bytes) -> csv.DictReader:
-    lines = contents.decode(errors="ignore").splitlines()
+    text = contents.decode("utf-8-sig", errors="ignore")
+    lines = text.splitlines()
+
     if not lines:
         raise HTTPException(status_code=400, detail="Empty CSV file")
 
     header_index = find_header_row(lines)
     real_lines = lines[header_index:]
 
-    reader = csv.DictReader(real_lines)
-    logger.info("Detected CSV columns: %s", reader.fieldnames)
+    # --- sanitize header line only ---
+    header_line = real_lines[0]
+    header_line = header_line.lstrip("\ufeff")
+
+    cleaned_lines = [header_line] + real_lines[1:]
+
+    reader = csv.DictReader(cleaned_lines)
+
+    logger.info("RAW headers: %s", reader.fieldnames)
+    logger.info("CLEAN headers: %s", reader.fieldnames)
+
     return reader
+
 
 
 def resolve_product_type(row: dict, type_map: dict) -> str:
     product_group = get_any(row, ["product group", "group", "category"])
     material_type = get_any(row, ["material type", "material", "surface"])
-    product_type_raw = get_any(row, ["product type", "type"])
+    product_type_raw = get_any(row, ["product type", "type", "more info"])
 
     candidates = []
     if product_group and material_type:
@@ -137,7 +170,20 @@ def resolve_product_type(row: dict, type_map: dict) -> str:
         if key in type_map:
             return type_map[key]
 
-    return "VIN"
+    return "CER"
+
+def extract_carton_quantity(row: dict) -> str:
+    return (
+        get_any(row, [
+            "width/quant-carton",
+            "width",
+            "sf/cn",
+            "pcs/cn",
+            "pcs/box",
+        ]) or ""
+)
+
+
 
 
 # ----------------------------
@@ -222,10 +268,12 @@ async def preview_convert_to_b2b(file: UploadFile, manufacturer: str = Form(None
         style = get_any(r, ["description", "style", "pattern"]) or ""
         color = get_any(r, ["color", "colour"]) or ""
         sku = get_any(r, ["sku", "ikey"]) or ""
-        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom", "bu"]) or "")
+        pricing_unit = normalize_unit(get_any(r, ["unit", "uom", "bu", "sold by u/m"]) or "")
         price = get_any(r, ["price", "cut cost", "base price"]) or ""
 
         product_type = resolve_product_type(r, type_map)
+        weight = extract_weight(r)
+        carton_qty = extract_carton_quantity(r)
 
         out.append({
             "~~Manufacturer": manuf,
@@ -235,6 +283,8 @@ async def preview_convert_to_b2b(file: UploadFile, manufacturer: str = Form(None
             "Product Type": product_type,
             "Pricing Unit": pricing_unit,
             "Cut Cost": price,
+            "Weight": weight,
+            "Width/Quant-Carton": carton_qty,
         })
 
     return {"already_b2b": False, "rows_preview": out[:200]}
@@ -245,7 +295,7 @@ async def preview_convert_to_b2b(file: UploadFile, manufacturer: str = Form(None
 # ----------------------------
 
 @router.post("/convert-to-b2b")
-async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force_manufacturer: bool = Form(False)):
+async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force_manufacturer: bool = Form(False),   filename: str = Form(None)):
     contents = await file.read()
     reader = build_reader(contents)
 
@@ -276,10 +326,13 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
         style = (get_any(r, ["description", "style", "pattern"]) or "").strip()
         color = (get_any(r, ["color", "colour"]) or "").strip()
         sku = (get_any(r, ["sku", "ikey"]) or "").strip()
-        pricing_unit = normalize_unit(get_any(r, ["pc", "unit", "uom", "bu"]) or "")
+        pricing_unit = normalize_unit(get_any(r, ["unit", "uom", "bu", "sold by u/m"]) or "").strip()
         price = get_any(r, ["price", "cut cost", "base price"]) or ""
 
         product_type = resolve_product_type(r, type_map)
+
+        weight = extract_weight(r)
+        carton_qty = extract_carton_quantity(r)
 
         logger.info("Row SKU=%s type=%s unit=%s manuf=%s", sku, product_type, pricing_unit, manuf)
 
@@ -294,7 +347,7 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
             "Pricing Unit": pricing_unit,
             "Cut Cost": price,
             "Roll Cost": "",
-            "Width/Quant-Carton": "",
+            "Width/Quant-Carton": carton_qty,
             "Backing": "",
             "Retail Price": "",
             "Is Promo": "0",
@@ -304,16 +357,16 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
             "Promo Roll Cost": "",
             "Is Dropped": "0",
             "Retail Formula": "",
-            "Display Tags": "1",
+            "Display Tags": "0",
             "Comments": "",
             "Private Style": "",
             "Private Color": "",
-            "Weight": "",
+            "Weight": weight,
             "Custom": "",
             "Style UX": "",
             "Style CARE": "",
             "Color CARE": "",
-            "Display Online": "1",
+            "Display Online": "0",
             "Freight": "",
             "Picture 1 URL": "",
             "Barcode": "",
@@ -325,10 +378,14 @@ async def convert_to_b2b(file: UploadFile, manufacturer: str = Form(None), force
     writer.writerows(output_rows)
     output.seek(0)
 
+    download_name = safe_filename(filename)
+
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=converted_b2b.csv"},
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_name}"'
+        },
     )
 
 

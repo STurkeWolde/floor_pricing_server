@@ -45,6 +45,8 @@ function App() {
 
   const convertInputRef = useRef();
 
+  const [outputFilename, setOutputFilename] = useState("converted_b2b.csv");
+
   useEffect(() => {
     loadData();
   }, []);
@@ -150,43 +152,54 @@ function App() {
 
   // ---------------- CONVERT + DOWNLOAD ----------------
 
-  async function handleConvertAndDownload(file) {
-    if (!file) return;
+ async function handleConvertAndDownload(file) {
+  if (!file) return;
 
-    const fd = new FormData();
-    fd.append("file", file);
-    if (manufacturerOverride) fd.append("manufacturer", manufacturerOverride);
-    fd.append("force_manufacturer", forceManufacturer ? "true" : "false");
+  const fd = new FormData();
+  fd.append("file", file);
 
-    setUploading(true);
-    try {
-      const res = await fetch(`${API_URL}/b2b/convert-to-b2b`, {
-        method: "POST",
-        body: fd,
-      });
-      if (!res.ok) throw new Error();
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "converted_b2b.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-
-      setShowPreview(false);
-      setPreviewRows(null);
-      alert("✅ Converted & downloaded");
-    } catch {
-      alert("❌ Convert failed");
-    } finally {
-      setUploading(false);
-    }
+  if (manufacturerOverride) {
+    fd.append("manufacturer", manufacturerOverride);
   }
+
+  fd.append("force_manufacturer", forceManufacturer ? "true" : "false");
+
+  // ✅ Send filename to backend (still useful for logging / future streaming)
+  fd.append("filename", outputFilename);
+
+  setUploading(true);
+  try {
+    const res = await fetch(`${API_URL}/b2b/convert-to-b2b`, {
+      method: "POST",
+      body: fd,
+    });
+
+    if (!res.ok) throw new Error();
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+
+    // ✅ THIS is required for blob downloads
+    a.download = outputFilename || "converted_b2b.csv";
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+
+    setShowPreview(false);
+    setPreviewRows(null);
+    alert("✅ Converted & downloaded");
+  } catch {
+    alert("❌ Convert failed");
+  } finally {
+    setUploading(false);
+  }
+}
 
   async function handleExportJSON() {
     const res = await fetch(`${API_URL}/b2b/export/json`);
@@ -359,6 +372,13 @@ function App() {
                 <input type="checkbox" checked={forceManufacturer} onChange={e=>setForceManufacturer(e.target.checked)}/>
                 Force
               </label>
+
+              <input
+  className="p-2 border rounded"
+  placeholder="Output filename"
+  value={outputFilename}
+  onChange={(e) => setOutputFilename(e.target.value)}
+/>
 
               <button onClick={handleExportJSON} className="bg-green-600 text-white px-3 py-2 rounded flex gap-1">
                 <FileDown size={16}/> Export JSON
