@@ -96,7 +96,9 @@ def find_header_row(lines: list[str]) -> int:
     ]
 
     for i, line in enumerate(lines[:50]):
-        cols = [c.strip() for c in line.split(",")]
+        
+        cols = re.split(r"[,\t;|]", line)
+        cols = [c.strip() for c in cols]
 
         if len(cols) < 3:
             continue
@@ -121,6 +123,7 @@ def find_header_row(lines: list[str]) -> int:
 
 
 def build_reader(contents: bytes) -> csv.DictReader:
+    # 1️⃣ Decode safely
     try:
         text = contents.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -130,11 +133,31 @@ def build_reader(contents: bytes) -> csv.DictReader:
     if not lines:
         raise HTTPException(status_code=400, detail="Empty CSV file")
 
+    # 2️⃣ Find header row
     header_index = find_header_row(lines)
-    real_lines = lines[header_index:]
+    relevant_lines = lines[header_index:]
 
-    reader = csv.DictReader(real_lines)
-    logger.info("Detected headers: %s", reader.fieldnames)
+    sample = "\n".join(relevant_lines[:10])
+
+    # 3️⃣ Detect delimiter
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        delimiter = dialect.delimiter
+    except Exception:
+        delimiter = ","
+
+    logger.info(f"Detected delimiter: {delimiter}")
+
+    # 4️⃣ Rebuild clean stream
+    stream = io.StringIO("\n".join(relevant_lines))
+
+    reader = csv.DictReader(stream, delimiter=delimiter)
+
+    # 5️⃣ Normalize headers immediately
+    reader.fieldnames = [normalize_key(h) for h in reader.fieldnames]
+
+    logger.info("Normalized headers: %s", reader.fieldnames)
+
     return reader
 
 
@@ -164,23 +187,36 @@ TYPE_MAP = {
 
 
 def resolve_product_type(row: Dict) -> str:
-    combined = " ".join([
-        str(get_any(row, ["product group", "group", "category"]) or ""),
-        str(get_any(row, ["material type", "material", "surface"]) or ""),
-        str(get_any(row, ["product type", "type"]) or ""),
-    ])
+    material = (get_any(row, ["material type", "material", "surface"]) or "").lower()
+    product_group = (get_any(row, ["product group", "group", "category"]) or "").lower()
+    product_type_raw = (get_any(row, ["product type", "type"]) or "").lower()
 
+    combined = f"{product_group} {material} {product_type_raw}"
     norm = normalize_key(combined)
 
+    # ✅ 1. MATERIAL ALWAYS WINS
+    if any(x in material for x in ["ceramic", "porcelain"]):
+        return "CER"
+
+    if any(x in material for x in ["marble", "travertine", "limestone", "granite", "onyx", "basalt"]):
+        return "STO"
+
+    if "glass" in material:
+        return "GLS"
+
+    if "vinyl" in material:
+        return "VIN"
+
+    if "wood" in material:
+        return "WOO"
+
+    # ✅ 2. Then fallback to mapping
     for key, val in TYPE_MAP.items():
         if key in norm:
             return val
 
-    if "ceramic" in norm or "porcelain" in norm:
-        return "CER"
-
+    # ✅ 3. Final fallback
     return "CER"
-
 
 def normalize_unit(u: str | None) -> str:
     if not u:
@@ -286,7 +322,7 @@ async def import_b2b_csv(file: UploadFile, db: Session = Depends(get_db)):
             color=get_any(row, ["color", "colour"]) or "",
             product_type=product_type,
             pricing_unit=infer_pricing_unit(row, product_type),
-            price=parse_price(get_any(row, ["price", "cut cost", "base price"])),
+            price=parse_price(get_any(row, ["price", "cut cost", "base price", "retail price"])),
             vendor_id=vendor.id,
         )
 
@@ -332,7 +368,7 @@ async def preview_convert_to_b2b(
             "SKU": get_any(row, ["sku", "ikey", "code", "item #"]) or "",
             "Product Type": product_type,
             "Pricing Unit": infer_pricing_unit(row, product_type),
-            "Cut Cost": get_any(row, ["price", "cut cost", "base price"]) or "",
+            "Cut Cost": get_any(row, ["price", "cut cost", "base price", "retail price"]) or "",
             "Weight": extract_weight(row),
             "Width/Quant-Carton": extract_carton_quantity(row),
         })
@@ -385,7 +421,7 @@ async def convert_to_b2b(
             "SKU": get_any(row, ["sku", "ikey", "code", "item #"]) or "",
             "Product Type": product_type,
             "Pricing Unit": infer_pricing_unit(row, product_type),
-            "Cut Cost": get_any(row, ["price", "cut cost", "base price"]) or "",
+            "Cut Cost": get_any(row, ["price", "cut cost", "base price", "retail price"]) or "",
             "Roll Cost": "",
             "Width/Quant-Carton": extract_carton_quantity(row),
             "Backing": "",
